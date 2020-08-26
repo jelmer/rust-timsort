@@ -1,0 +1,30 @@
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  build_test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Test (debug)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+      - name: Test (release)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release
+      - name: Check rustfmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: -- --check
+      - name: Check clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --tests -- -Dwarnings
