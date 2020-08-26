@@ -2,14 +2,14 @@
 //! sized temporary slice of the same type. Naturally, it can only merge slices
 //! that are themselves already sorted.
 
-use merge;
+use crate::{never, NeverResult};
 
 /// Test mergeing two empty slices.
 #[test]
 fn empty() {
     let mut list: Vec<u32> = vec![];
     merge(&mut list, 0);
-    assert!(list.len() == 0);
+    assert!(list.is_empty());
 }
 
 /// Test merging two equal-sized single-element vectors that are already sorted.
@@ -81,15 +81,19 @@ fn lo_unsorted_multiple() {
 /// Test panic safety when the first run is longest
 #[test]
 fn lo_panic() {
-    use std::thread;
-    let mut list = vec![1, 2, 3, 4, 5];
-    unsafe {
-        let list2p: *mut Vec<usize> = &mut list;
-        let list2: &mut Vec<usize> = &mut *list2p;
-        let _ = thread::spawn(move || {
-            merge::merge(list2, 3, |_, _| { panic!("Expected panic: this is normal") });
-        }).join().err().unwrap();
-    }
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    let mut list = vec![1usize, 2, 3, 4, 5];
+
+    catch_unwind(AssertUnwindSafe(|| {
+        super::merge(&mut list, 3, |_, _| -> NeverResult<_> {
+            panic!("Expected panic: this is normal")
+        })
+        .unwrap_or_else(never)
+    }))
+    .err()
+    .unwrap();
+
     assert!(list[0] == 1);
     assert!(list[1] == 2);
     assert!(list[2] == 3);
@@ -100,15 +104,19 @@ fn lo_panic() {
 /// Test panic safety when the second run is longest
 #[test]
 fn hi_panic() {
-    use std::thread;
-    let mut list = vec![1, 2, 3, 4, 5];
-    unsafe {
-        let list2p: *mut Vec<usize> = &mut list;
-        let list2: &mut Vec<usize> = &mut *list2p;
-        let _ = thread::spawn(move || {
-            merge::merge(list2, 2, |_, _| { panic!("Expected panic: this is normal") });
-        }).join().err().unwrap();
-    }
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    let mut list = vec![1usize, 2, 3, 4, 5];
+
+    catch_unwind(AssertUnwindSafe(|| {
+        super::merge(&mut list, 2, |_, _| -> NeverResult<_> {
+            panic!("Expected panic: this is normal")
+        })
+        .unwrap_or_else(never)
+    }))
+    .err()
+    .unwrap();
+
     assert!(list[0] == 1);
     assert!(list[1] == 2);
     assert!(list[2] == 3);
@@ -124,15 +132,15 @@ fn lo_nodrop() {
     struct ExplodeOnDrop(usize);
     impl Drop for ExplodeOnDrop {
         fn drop(&mut self) {
-           // panic!("We're not supposed to panic.");
+            panic!("We're not supposed to panic.");
         }
     }
     let mut list = vec![ExplodeOnDrop(3), ExplodeOnDrop(7), ExplodeOnDrop(2)];
-    merge::merge(&mut list, 2, |a, b| {a.0.cmp(&b.0) });
+    super::merge(&mut list, 2, |a, b| -> NeverResult<_> { Ok(a.0 > b.0) }).unwrap_or_else(never);
     assert!(list[0].0 == 2);
     assert!(list[1].0 == 3);
     assert!(list[2].0 == 7);
-    unsafe { list.set_len(0); }
+    list.into_iter().for_each(std::mem::forget);
 }
 
 #[test]
@@ -145,18 +153,21 @@ fn hi_nodrop() {
         }
     }
     let mut list = vec![ExplodeOnDrop(3), ExplodeOnDrop(2), ExplodeOnDrop(7)];
-    merge::merge(&mut list, 1, |a, b| {a.0.cmp(&b.0) });
+    super::merge(&mut list, 1, |a, b| -> NeverResult<_> { Ok(a.0 > b.0) }).unwrap_or_else(never);
     assert!(list[0].0 == 2);
     assert!(list[1].0 == 3);
     assert!(list[2].0 == 7);
-    unsafe { list.set_len(0); }
+    list.into_iter().for_each(std::mem::forget);
 }
 
 /// Ensure that, when we enter galloping mode, we still work right.
 
 #[test]
 fn lo_gallop_stress() {
-    let mut list = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+    let mut list = vec![
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 11, 12, 13, 14,
+        15, 16, 17, 18, 19, 20,
+    ];
     merge(&mut list, 21);
     assert!(list[0] == 1);
     assert!(list[1] == 2);
@@ -195,7 +206,10 @@ fn lo_gallop_stress() {
 
 #[test]
 fn hi_gallop_stress() {
-    let mut list = vec![11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30];
+    let mut list = vec![
+        11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 21, 22, 23, 24,
+        25, 26, 27, 28, 29, 30,
+    ];
     merge(&mut list, 10);
     assert!(list[0] == 1);
     assert!(list[1] == 2);
@@ -232,6 +246,5 @@ fn hi_gallop_stress() {
 
 /// Merge convenience used for tests.
 pub fn merge<T: Ord>(list: &mut [T], first_len: usize) {
-    merge::merge(list, first_len, |a, b| a.cmp(b) );
+    super::merge(list, first_len, |a, b| -> NeverResult<_> { Ok(a > b) }).unwrap_or_else(never);
 }
-

@@ -1,4 +1,4 @@
-use find_run;
+use crate::{never, NeverResult};
 
 #[test]
 fn empty() {
@@ -10,14 +10,14 @@ fn empty() {
 
 #[test]
 fn single() {
-    let (ord, len) = find_run(&vec![1]);
+    let (ord, len) = find_run(&[1]);
     assert_eq!(ord, false);
     assert_eq!(len, 1);
 }
 
 #[test]
 fn greater() {
-    let (ord, len) = find_run(&vec![1, 2, 2, 3, 4, 5]);
+    let (ord, len) = find_run(&[1, 2, 2, 3, 4, 5]);
     assert_eq!(ord, false);
     assert_eq!(len, 6);
 }
@@ -26,21 +26,21 @@ fn greater() {
 // less ordering. Unfortunately, reversing those sub-runs creates an unstable sort.
 #[test]
 fn less_stable() {
-    let (ord, len) = find_run(&vec![5, 4, 4, 3, 4, 5]);
+    let (ord, len) = find_run(&[5, 4, 4, 3, 4, 5]);
     assert_eq!(ord, true);
     assert_eq!(len, 2);
 }
 
 #[test]
 fn less() {
-    let (ord, len) = find_run(&vec![5, 4, 3, 2, 1, 0]);
+    let (ord, len) = find_run(&[5, 4, 3, 2, 1, 0]);
     assert_eq!(ord, true);
     assert_eq!(len, 6);
 }
 
 #[test]
 fn equal() {
-    let (ord, len) = find_run(&vec![2, 2, 2, 2, 2, 2]);
+    let (ord, len) = find_run(&[2, 2, 2, 2, 2, 2]);
     assert_eq!(ord, false);
     assert_eq!(len, 6);
 }
@@ -69,15 +69,12 @@ fn get_run_noreverse() {
     assert_eq!(list[4], 7);
 }
 
-
 /// With comparator.
 pub fn find_run<T: Ord>(list: &[T]) -> (bool, usize) {
-    find_run::find_run(list, |a, b| a.cmp(b))
+    super::find_run(list, |a, b| -> NeverResult<_> { Ok(a > b) }).unwrap_or_else(never)
 }
-
 
 /// With comparator.
 pub fn get_run<T: Ord>(list: &mut [T]) -> usize {
-    find_run::get_run(list, |a, b| a.cmp(b))
+    super::get_run(list, |a, b| -> NeverResult<_> { Ok(a > b) }).unwrap_or_else(never)
 }
-

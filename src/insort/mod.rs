@@ -4,29 +4,31 @@
 #[cfg(test)]
 mod tests;
 
-use std::cmp::Ordering;
-use std::ptr;
-
 /// Sorts the list using insertion sort.
 ///
 /// `c(a, b)` should return std::cmp::Ordering::Greater when `a` is greater than `b`.
 // This version was almost completely copied from libcollections/slice.rs
-pub fn sort<T, C: Fn(&T, &T) -> Ordering>(list: &mut [T], c: C) {
-    unsafe {
-        let list_ptr = list.as_mut_ptr();
-        let len = list.len();
-        for i in 0..len {
-            let mut j = i;
-            let list_i = list_ptr.offset(i as isize);
-            while j > 0 && c(&*list_i, &*list_ptr.offset(j as isize - 1)) == Ordering::Less {
-                j -= 1;
-            }
-            if i != j {
-                let list_j = list_ptr.offset(j as isize);
-                let tmp = ptr::read(list_i);
-                ptr::copy(list_j, list_j.offset(1), i - j);
-                ptr::write(list_j, tmp);
+pub fn sort<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
+    list: &mut [T],
+    is_greater: C,
+) -> Result<(), E> {
+    if list.len() < 2 {
+        return Ok(());
+    }
+    for i in 0..list.len() {
+        let i_el = &list[i];
+        // find the index just above the element that is in order wrt list[i]
+        let mut j = 0;
+        for (jj, j_el) in list[..i].iter().enumerate().rev() {
+            if !is_greater(j_el, i_el)? {
+                j = jj + 1;
+                break;
             }
         }
+        if i != j {
+            // SAFETY: j<i, i<list.len
+            unsafe { list.get_unchecked_mut(j..=i).rotate_right(1) };
+        }
     }
+    Ok(())
 }

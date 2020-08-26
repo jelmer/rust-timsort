@@ -1,14 +1,14 @@
 //! The top sorting algorithm; that is, the modified merge sort we keep
 //! talking about.
 
-use sort as timsort;
+use crate::{never, NeverResult};
 
 /// Test the sort implementation with an empty list
 #[test]
 fn empty() {
     let mut list: Vec<u32> = vec![];
     sort(&mut list);
-    assert!(list.len() == 0);
+    assert!(list.is_empty());
 }
 
 /// Test the sort implementation with a single-element list
@@ -63,17 +63,16 @@ fn stable_npow2() {
         key1: usize,
         key2: usize,
     };
-    let mut list: Vec<Item> = (0..len).map(|_| {
-        key1 += 1;
-        key1 %= 5;
-        key2 += 1;
-        Item {
-            key1: key1,
-            key2: key2,
-        }
-    }).collect();
-    timsort::sort(&mut list, |a, b| a.key1.cmp(&b.key1));
-    for i in (0 .. (len - 1)) {
+    let mut list: Vec<Item> = (0..len)
+        .map(|_| {
+            key1 += 1;
+            key1 %= 5;
+            key2 += 1;
+            Item { key1, key2 }
+        })
+        .collect();
+    crate::sort_by_gt(&mut list, |a, b| a.key1 > b.key1);
+    for i in 0..(len - 1) {
         assert!(list[i].key1 <= list[i + 1].key1);
         if list[i].key1 == list[i + 1].key1 {
             assert!(list[i].key2 <= list[i + 1].key2);
@@ -91,17 +90,16 @@ fn stable() {
         key1: usize,
         key2: usize,
     };
-    let mut list: Vec<Item> = (0..len).map(|_| {
-        key1 += 1;
-        key1 %= 5;
-        key2 += 1;
-        Item {
-            key1: key1,
-            key2: key2,
-        }
-    }).collect();
-    timsort::sort(&mut list, |a, b| a.key1.cmp(&b.key1));
-    for i in (0 .. (len - 1)) {
+    let mut list: Vec<Item> = (0..len)
+        .map(|_| {
+            key1 += 1;
+            key1 %= 5;
+            key2 += 1;
+            Item { key1, key2 }
+        })
+        .collect();
+    crate::sort_by_gt(&mut list, |a, b| a.key1 > b.key1);
+    for i in 0..(len - 1) {
         assert!(list[i].key1 <= list[i + 1].key1);
         if list[i].key1 == list[i + 1].key1 {
             assert!(list[i].key2 <= list[i + 1].key2);
@@ -110,8 +108,7 @@ fn stable() {
 }
 
 /// Sort implementation convenience used for tests.
-pub fn sort<T: Ord>(list: &mut[T]) {
-    let mut sort_state = timsort::SortState::new(list, |a, b| a.cmp(b) );
-    sort_state.sort();
+pub fn sort<T: Ord>(list: &mut [T]) {
+    let mut sort_state = super::SortState::new(list, |a, b| -> NeverResult<_> { Ok(a > b) });
+    sort_state.sort().unwrap_or_else(never);
 }
-
