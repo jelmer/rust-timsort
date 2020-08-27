@@ -5,8 +5,6 @@
 mod tests;
 
 /// Sorts the list using insertion sort.
-///
-/// `c(a, b)` should return std::cmp::Ordering::Greater when `a` is greater than `b`.
 // This version was almost completely copied from libcollections/slice.rs
 pub fn sort<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
     list: &mut [T],

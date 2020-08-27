@@ -142,8 +142,6 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
 }
 
 /// Sorts the list using merge sort.
-///
-/// `c(a, b)` should return std::cmp::Ordering::Greater when `a` is greater than `b`.
 pub fn try_sort_by<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
     list: &mut [T],
     is_greater: C,
