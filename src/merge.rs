@@ -33,11 +33,7 @@ pub fn merge<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
         return Ok(());
     }
 
-    let nlist = list
-        .split_at_mut(first_off)
-        .1
-        .split_at_mut(first_len + second_len)
-        .0;
+    let nlist = &mut list[first_off..][..first_len + second_len];
     if first_len > second_len {
         merge_hi(nlist, first_len, second_len, is_greater)
     } else {

@@ -69,11 +69,11 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
         let min_run = calc_min_merge(list_len);
         while self.pos < list_len {
             let pos = self.pos;
-            let mut run_len = get_run(self.list.split_at_mut(pos).1, &self.is_greater)?;
+            let mut run_len = get_run(&mut self.list[pos..], &self.is_greater)?;
             let run_min_len = min(min_run, list_len - pos);
             if run_len < run_min_len {
                 run_len = run_min_len;
-                let l = self.list.split_at_mut(pos).1.split_at_mut(run_len).0;
+                let l = &mut self.list[pos..][..run_len];
                 insort::sort(l, &self.is_greater)?;
             }
             self.runs.push(Run { pos, len: run_len });
@@ -90,14 +90,14 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
     fn merge_collapse(&mut self) -> Result<(), E> {
         let runs = &mut self.runs;
         while runs.len() > 1 {
-            let n = runs.len() - 2;
-            if (n >= 1 && runs[n - 1].len <= runs[n].len + runs[n + 1].len)
-                || (n >= 2 && runs[n - 2].len <= runs[n].len + runs[n - 1].len)
+            let l = runs.len();
+            if (l >= 3 && runs[l - 1].len <= runs[l - 2].len + runs[l - 1].len)
+                || (l >= 4 && runs[l - 4].len <= runs[l - 2].len + runs[l - 3].len)
             {
-                let (pos1, pos2) = if runs[n - 1].len < runs[n + 1].len {
-                    (n - 1, n)
+                let (pos1, pos2) = if runs[l - 3].len < runs[l - 1].len {
+                    (l - 3, l - 2)
                 } else {
-                    (n, n + 1)
+                    (l - 2, l - 1)
                 };
                 let (run1, run2) = (runs[pos1], runs[pos2]);
                 debug_assert_eq!(run1.pos + run1.len, run2.pos);
@@ -106,8 +106,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
                     pos: run1.pos,
                     len: run1.len + run2.len,
                 };
-                let l = self.list.split_at_mut(run1.pos).1;
-                let l = l.split_at_mut(run1.len + run2.len).0;
+                let l = &mut self.list[run1.pos..][..run1.len + run2.len];
                 merge(l, run1.len, &self.is_greater)?;
             } else {
                 break; // Invariant established.
@@ -120,12 +119,11 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
     fn merge_force_collapse(&mut self) -> Result<(), E> {
         let runs = &mut self.runs;
         while runs.len() > 1 {
-            let n = runs.len() - 2;
-            let (pos1, pos2) = if n > 0 && runs[n - 1].len < runs[n + 1].len {
-                (n - 1, n)
-            } else {
-                (n, n + 1)
-            };
+            let (mut pos1, mut pos2) = (runs.len() - 2, runs.len() - 1);
+            if runs.len() > 2 && runs[runs.len() - 3].len < runs[runs.len() - 1].len {
+                pos1 -= 1;
+                pos2 -= 1;
+            }
             let (run1, run2) = (runs[pos1], runs[pos2]);
             debug_assert_eq!(run1.len, run2.pos);
             runs.remove(pos2);
@@ -133,8 +131,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
                 pos: run1.pos,
                 len: run1.len + run2.len,
             };
-            let l = self.list.split_at_mut(run1.pos).1;
-            let l = l.split_at_mut(run1.len + run2.len).0;
+            let l = &mut self.list[run1.pos..][..run1.len + run2.len];
             merge(l, run1.len, &self.is_greater)?;
         }
         Ok(())
