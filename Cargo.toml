@@ -1,6 +1,6 @@
 [package]
 name = "timsort"
-version = "0.1.1"
+version = "0.1.2"
 description = "Rust implementation of the modified MergeSort used in Python and Java"
 repository = "https://github.com/RustPython/rust-timsort"
 authors = ["Michael Howell <michael@notriddle.com>", "RustPython Team"]
