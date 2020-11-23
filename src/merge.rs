@@ -6,6 +6,7 @@
 mod tests;
 
 use crate::gallop::{self, gallop_left, gallop_right};
+use std::mem::ManuallyDrop;
 use std::ptr;
 
 /// Merge implementation switch.
@@ -19,15 +20,16 @@ pub fn merge<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
     }
     let (first, second) = list.split_at_mut(first_len);
     let second_len = gallop_left(
-        &first[first_len - 1],
+        first.last().unwrap(),
         second,
         gallop::Mode::Reverse,
         &is_greater,
     )?;
-    if second_len == 0 {
-        return Ok(());
-    }
-    let first_off = gallop_right(&second[0], first, gallop::Mode::Forward, &is_greater)?;
+    let first_of_second = match second.get(0) {
+        Some(x) => x,
+        None => return Ok(()),
+    };
+    let first_off = gallop_right(first_of_second, first, gallop::Mode::Forward, &is_greater)?;
     first_len -= first_off;
     if first_len == 0 {
         return Ok(());
@@ -54,6 +56,12 @@ pub fn merge_lo<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
     MergeLo::new(list, first_len, is_greater).merge()
 }
 
+#[inline(always)]
+fn md_as_inner<T>(x: &[ManuallyDrop<T>]) -> &[T] {
+    // SAFETY: ManuallyDrop<T> is repr(transparent) over T
+    unsafe { &*(x as *const [_] as *const [T]) }
+}
+
 /// Implementation of `merge_lo`. We need to have an object in order to
 /// implement panic safety.
 struct MergeLo<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> {
@@ -63,7 +71,7 @@ struct MergeLo<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> {
     second_pos: usize,
     dest_pos: usize,
     list: &'a mut [T],
-    tmp: Vec<T>,
+    tmp: Vec<ManuallyDrop<T>>,
     is_greater: C,
 }
 impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
@@ -83,7 +91,11 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
         // original contents uninitialized.
         unsafe {
             ret_val.tmp.set_len(first_len);
-            ptr::copy_nonoverlapping(ret_val.list.as_ptr(), ret_val.tmp.as_mut_ptr(), first_len);
+            ptr::copy_nonoverlapping(
+                ret_val.list.as_ptr() as *const ManuallyDrop<T>,
+                ret_val.tmp.as_mut_ptr(),
+                first_len,
+            );
         }
         ret_val
     }
@@ -111,7 +123,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
                         first_count = 0;
                     } else {
                         ptr::copy_nonoverlapping(
-                            self.tmp.get_unchecked(self.first_pos),
+                            &**self.tmp.get_unchecked(self.first_pos),
                             self.list.get_unchecked_mut(self.dest_pos),
                             1,
                         );
@@ -124,8 +136,8 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
             } else {
                 // Galloping mode.
                 second_count = gallop_left(
-                    unsafe { self.tmp.get_unchecked(self.first_pos) },
-                    self.list.split_at(self.second_pos).1,
+                    unsafe { md_as_inner(&self.tmp).get_unchecked(self.first_pos) },
+                    &self.list[self.second_pos..],
                     gallop::Mode::Forward,
                     is_greater,
                 )?;
@@ -142,13 +154,13 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
                 if self.second_pos > self.dest_pos && self.second_pos < self.list_len {
                     first_count = gallop_right(
                         unsafe { self.list.get_unchecked(self.second_pos) },
-                        self.tmp.split_at(self.first_pos).1,
+                        md_as_inner(&self.tmp[self.first_pos..]),
                         gallop::Mode::Forward,
                         is_greater,
                     )?;
                     unsafe {
                         ptr::copy_nonoverlapping(
-                            self.tmp.get_unchecked(self.first_pos),
+                            md_as_inner(&self.tmp).get_unchecked(self.first_pos),
                             self.list.get_unchecked_mut(self.dest_pos),
                             first_count,
                         )
@@ -173,7 +185,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> Drop for MergeLo<'a, T, E, 
             // function is safe.
             if self.first_pos < self.first_len {
                 ptr::copy_nonoverlapping(
-                    self.tmp.get_unchecked(self.first_pos),
+                    self.tmp.get_unchecked(self.first_pos) as *const _ as *const T,
                     self.list.get_unchecked_mut(self.dest_pos),
                     self.first_len - self.first_pos,
                 );
@@ -202,7 +214,7 @@ struct MergeHi<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> {
     second_pos: isize,
     dest_pos: isize,
     list: &'a mut [T],
-    tmp: Vec<T>,
+    tmp: Vec<ManuallyDrop<T>>,
     is_greater: C,
 }
 
@@ -223,7 +235,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeHi<'a, T, E, C> {
             ret_val.tmp.set_len(second_len);
             ptr::copy_nonoverlapping(
                 ret_val.list.as_ptr().add(first_len),
-                ret_val.tmp.as_mut_ptr(),
+                ret_val.tmp.as_mut_ptr() as *mut T,
                 second_len,
             );
         }
@@ -251,7 +263,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeHi<'a, T, E, C> {
                         self.first_pos -= 1;
                     } else {
                         ptr::copy_nonoverlapping(
-                            self.tmp.get_unchecked(self.second_pos as usize),
+                            md_as_inner(&self.tmp).get_unchecked(self.second_pos as usize),
                             self.list.get_unchecked_mut(self.dest_pos as usize),
                             1,
                         );
@@ -263,8 +275,8 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeHi<'a, T, E, C> {
                 // Galloping mode.
                 first_count = self.first_pos as usize + 1
                     - gallop_right(
-                        unsafe { self.tmp.get_unchecked(self.second_pos as usize) },
-                        self.list.split_at(self.first_pos as usize + 1).0,
+                        unsafe { md_as_inner(&self.tmp).get_unchecked(self.second_pos as usize) },
+                        &self.list[..=self.first_pos as usize],
                         gallop::Mode::Reverse,
                         is_greater,
                     )?;
@@ -282,13 +294,13 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeHi<'a, T, E, C> {
                     second_count = self.second_pos as usize + 1
                         - gallop_left(
                             unsafe { self.list.get_unchecked(self.first_pos as usize) },
-                            self.tmp.split_at(self.second_pos as usize + 1).0,
+                            md_as_inner(&self.tmp[..=self.second_pos as usize]),
                             gallop::Mode::Reverse,
                             is_greater,
                         )?;
                     unsafe {
                         copy_nonoverlapping_backwards(
-                            self.tmp.get_unchecked(self.second_pos as usize),
+                            md_as_inner(&self.tmp).get_unchecked(self.second_pos as usize),
                             self.list.get_unchecked_mut(self.dest_pos as usize),
                             second_count,
                         )
@@ -334,15 +346,11 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> Drop for MergeHi<'a, T, E, 
             // function is safe.
             if self.second_pos >= 0 {
                 copy_nonoverlapping_backwards(
-                    self.tmp.get_unchecked(self.second_pos as usize),
+                    md_as_inner(&self.tmp).get_unchecked(self.second_pos as usize),
                     self.list.get_unchecked_mut(self.dest_pos as usize),
                     self.second_pos as usize + 1,
                 );
             }
-
-            // The temporary storage is now full of nothing but uninitialized.
-            // We want to deallocate the space, but not call the destructors.
-            self.tmp.set_len(0);
         }
     }
 }
