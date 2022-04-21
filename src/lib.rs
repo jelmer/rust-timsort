@@ -3,15 +3,19 @@
 //! on an already-sorted list, smoothly becoming O(n log n) as the sorted
 //! sections (runs) get smaller and smaller.
 
+#![cfg_attr(not(test), no_std)]
+
+extern crate alloc;
+
 mod find_run;
 mod gallop;
 mod insort;
 mod merge;
 mod sort;
 
+use core::cmp::Ordering;
+use core::convert::Infallible;
 use sort::try_sort_by as try_sort_by_cmp;
-use std::cmp::Ordering;
-use std::convert::Infallible;
 
 type NeverResult<T> = Result<T, Infallible>;
 #[inline(always)]

@@ -4,7 +4,7 @@
 mod tests;
 
 use crate::Comparator;
-use std::cmp::Ordering;
+use core::cmp::Ordering;
 
 #[derive(Copy, Clone)]
 pub(crate) enum Mode {

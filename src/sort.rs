@@ -8,7 +8,8 @@ use crate::find_run::get_run;
 use crate::insort;
 use crate::merge::merge;
 use crate::Comparator;
-use std::cmp::min;
+use alloc::vec::Vec;
+use core::cmp::min;
 
 /// Minimum run length to merge; anything shorter will be lengthend and
 /// sorted using `insort::sort`.

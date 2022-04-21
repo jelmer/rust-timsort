@@ -7,8 +7,9 @@ mod tests;
 
 use crate::gallop::{self, gallop_left, gallop_right};
 use crate::Comparator;
-use std::mem::ManuallyDrop;
-use std::ptr;
+use alloc::vec::Vec;
+use core::mem::ManuallyDrop;
+use core::ptr;
 
 /// Merge implementation switch.
 pub(crate) fn merge<T, C: Comparator<T>>(
