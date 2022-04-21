@@ -6,30 +6,26 @@
 mod tests;
 
 use crate::gallop::{self, gallop_left, gallop_right};
+use crate::Comparator;
 use std::mem::ManuallyDrop;
 use std::ptr;
 
 /// Merge implementation switch.
-pub fn merge<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
+pub(crate) fn merge<T, C: Comparator<T>>(
     list: &mut [T],
     mut first_len: usize,
-    is_greater: C,
-) -> Result<(), E> {
+    cmp: &C,
+) -> Result<(), C::Error> {
     if first_len == 0 {
         return Ok(());
     }
     let (first, second) = list.split_at_mut(first_len);
-    let second_len = gallop_left(
-        first.last().unwrap(),
-        second,
-        gallop::Mode::Reverse,
-        &is_greater,
-    )?;
+    let second_len = gallop_left(first.last().unwrap(), second, gallop::Mode::Reverse, cmp)?;
     let first_of_second = match second.get(0) {
         Some(x) => x,
         None => return Ok(()),
     };
-    let first_off = gallop_right(first_of_second, first, gallop::Mode::Forward, &is_greater)?;
+    let first_off = gallop_right(first_of_second, first, gallop::Mode::Forward, cmp)?;
     first_len -= first_off;
     if first_len == 0 {
         return Ok(());
@@ -37,9 +33,9 @@ pub fn merge<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
 
     let nlist = &mut list[first_off..][..first_len + second_len];
     if first_len > second_len {
-        merge_hi(nlist, first_len, second_len, is_greater)
+        merge_hi(nlist, first_len, second_len, cmp)
     } else {
-        merge_lo(nlist, first_len, is_greater)
+        merge_lo(nlist, first_len, cmp)
     }
 }
 
@@ -48,12 +44,12 @@ pub fn merge<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
 const MIN_GALLOP: usize = 7;
 
 /// Merge implementation used when the first run is smaller than the second.
-pub fn merge_lo<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
+pub(crate) fn merge_lo<T, C: Comparator<T>>(
     list: &mut [T],
     first_len: usize,
-    is_greater: C,
-) -> Result<(), E> {
-    MergeLo::new(list, first_len, is_greater).merge()
+    cmp: &C,
+) -> Result<(), C::Error> {
+    MergeLo::new(list, first_len, cmp).merge()
 }
 
 #[inline(always)]
@@ -64,7 +60,7 @@ fn md_as_inner<T>(x: &[ManuallyDrop<T>]) -> &[T] {
 
 /// Implementation of `merge_lo`. We need to have an object in order to
 /// implement panic safety.
-struct MergeLo<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> {
+struct MergeLo<'a, T, C: Comparator<T>> {
     list_len: usize,
     first_pos: usize,
     first_len: usize,
@@ -72,11 +68,11 @@ struct MergeLo<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> {
     dest_pos: usize,
     list: &'a mut [T],
     tmp: Vec<ManuallyDrop<T>>,
-    is_greater: C,
+    cmp: &'a C,
 }
-impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
+impl<'a, T, C: Comparator<T>> MergeLo<'a, T, C> {
     /// Constructor for a lower merge.
-    fn new(list: &'a mut [T], first_len: usize, is_greater: C) -> Self {
+    fn new(list: &'a mut [T], first_len: usize, cmp: &'a C) -> Self {
         let mut ret_val = MergeLo {
             list_len: list.len(),
             first_pos: 0,
@@ -85,7 +81,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
             dest_pos: 0,
             list,
             tmp: Vec::with_capacity(first_len),
-            is_greater,
+            cmp,
         };
         // First, move the smallest run into temporary storage, leaving the
         // original contents uninitialized.
@@ -100,8 +96,8 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
         ret_val
     }
     /// Perform the one-by-one comparison and insertion.
-    fn merge(mut self) -> Result<(), E> {
-        let is_greater = &self.is_greater;
+    fn merge(mut self) -> Result<(), C::Error> {
+        let cmp = self.cmp;
         let mut first_count = 0;
         let mut second_count = 0;
         while self.second_pos > self.dest_pos && self.second_pos < self.list_len {
@@ -109,7 +105,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
             if (second_count | first_count) < MIN_GALLOP {
                 // One-at-a-time mode.
                 unsafe {
-                    if is_greater(
+                    if cmp.is_gt(
                         self.tmp.get_unchecked(self.first_pos),
                         self.list.get_unchecked(self.second_pos),
                     )? {
@@ -139,7 +135,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
                     unsafe { md_as_inner(&self.tmp).get_unchecked(self.first_pos) },
                     &self.list[self.second_pos..],
                     gallop::Mode::Forward,
-                    is_greater,
+                    cmp,
                 )?;
                 unsafe {
                     ptr::copy(
@@ -156,7 +152,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
                         unsafe { self.list.get_unchecked(self.second_pos) },
                         md_as_inner(&self.tmp[self.first_pos..]),
                         gallop::Mode::Forward,
-                        is_greater,
+                        cmp,
                     )?;
                     unsafe {
                         ptr::copy_nonoverlapping(
@@ -173,7 +169,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeLo<'a, T, E, C> {
         Ok(())
     }
 }
-impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> Drop for MergeLo<'a, T, E, C> {
+impl<'a, T, C: Comparator<T>> Drop for MergeLo<'a, T, C> {
     /// Copy all remaining items in the temporary storage into the list.
     /// If the comparator panics, the result will not be sorted, but will still
     /// contain no duplicates or uninitialized spots.
@@ -198,36 +194,36 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> Drop for MergeLo<'a, T, E, 
 }
 
 /// Merge implementation used when the first run is larger than the second.
-pub fn merge_hi<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
+pub(crate) fn merge_hi<T, C: Comparator<T>>(
     list: &mut [T],
     first_len: usize,
     second_len: usize,
-    is_greater: C,
-) -> Result<(), E> {
-    MergeHi::new(list, first_len, second_len, is_greater).merge()
+    cmp: &C,
+) -> Result<(), C::Error> {
+    MergeHi::new(list, first_len, second_len, cmp).merge()
 }
 
 /// Implementation of `merge_hi`. We need to have an object in order to
 /// implement panic safety.
-struct MergeHi<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> {
+struct MergeHi<'a, T, C: Comparator<T>> {
     first_pos: isize,
     second_pos: isize,
     dest_pos: isize,
     list: &'a mut [T],
     tmp: Vec<ManuallyDrop<T>>,
-    is_greater: C,
+    cmp: &'a C,
 }
 
-impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeHi<'a, T, E, C> {
+impl<'a, T, C: Comparator<T>> MergeHi<'a, T, C> {
     /// Constructor for a higher merge.
-    fn new(list: &'a mut [T], first_len: usize, second_len: usize, is_greater: C) -> Self {
+    fn new(list: &'a mut [T], first_len: usize, second_len: usize, cmp: &'a C) -> Self {
         let mut ret_val = MergeHi {
             first_pos: first_len as isize - 1,
             second_pos: second_len as isize - 1,
             dest_pos: list.len() as isize - 1,
             list,
             tmp: Vec::with_capacity(second_len),
-            is_greater,
+            cmp,
         };
         // First, move the smallest run into temporary storage, leaving the
         // original contents uninitialized.
@@ -242,8 +238,8 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeHi<'a, T, E, C> {
         ret_val
     }
     /// Perform the one-by-one comparison and insertion.
-    fn merge(mut self) -> Result<(), E> {
-        let is_greater = &self.is_greater;
+    fn merge(mut self) -> Result<(), C::Error> {
+        let cmp = self.cmp;
         let mut first_count: usize = 0;
         let mut second_count: usize = 0;
         while self.first_pos < self.dest_pos && self.first_pos >= 0 {
@@ -251,7 +247,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeHi<'a, T, E, C> {
             if (second_count | first_count) < MIN_GALLOP {
                 // One-at-a-time mode.
                 unsafe {
-                    if is_greater(
+                    if cmp.is_gt(
                         self.list.get_unchecked(self.first_pos as usize),
                         self.tmp.get_unchecked(self.second_pos as usize),
                     )? {
@@ -278,7 +274,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeHi<'a, T, E, C> {
                         unsafe { md_as_inner(&self.tmp).get_unchecked(self.second_pos as usize) },
                         &self.list[..=self.first_pos as usize],
                         gallop::Mode::Reverse,
-                        is_greater,
+                        cmp,
                     )?;
                 unsafe {
                     copy_backwards(
@@ -296,7 +292,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> MergeHi<'a, T, E, C> {
                             unsafe { self.list.get_unchecked(self.first_pos as usize) },
                             md_as_inner(&self.tmp[..=self.second_pos as usize]),
                             gallop::Mode::Reverse,
-                            is_greater,
+                            cmp,
                         )?;
                     unsafe {
                         copy_nonoverlapping_backwards(
@@ -334,7 +330,7 @@ unsafe fn copy_nonoverlapping_backwards<T>(src: *const T, dest: *mut T, size: us
     )
 }
 
-impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> Drop for MergeHi<'a, T, E, C> {
+impl<'a, T, C: Comparator<T>> Drop for MergeHi<'a, T, C> {
     /// Copy all remaining items in the temporary storage into the list.
     /// If the comparator panics, the result will not be sorted, but will still
     /// contain no duplicates or uninitialized spots.

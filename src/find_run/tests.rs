@@ -1,4 +1,4 @@
-use crate::{never, NeverResult};
+use crate::{comparator, never};
 
 #[test]
 fn empty() {
@@ -70,11 +70,11 @@ fn get_run_noreverse() {
 }
 
 /// With comparator.
-pub fn find_run<T: Ord>(list: &[T]) -> (bool, usize) {
-    super::find_run(list, |a, b| -> NeverResult<_> { Ok(a > b) }).unwrap_or_else(never)
+fn find_run<T: Ord>(list: &[T]) -> (bool, usize) {
+    super::find_run(list, &comparator(|a, b| Ok(a > b))).unwrap_or_else(never)
 }
 
 /// With comparator.
-pub fn get_run<T: Ord>(list: &mut [T]) -> usize {
-    super::get_run(list, |a, b| -> NeverResult<_> { Ok(a > b) }).unwrap_or_else(never)
+fn get_run<T: Ord>(list: &mut [T]) -> usize {
+    super::get_run(list, &comparator(|a, b| Ok(a > b))).unwrap_or_else(never)
 }

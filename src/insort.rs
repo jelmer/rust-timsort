@@ -4,12 +4,11 @@
 #[cfg(test)]
 mod tests;
 
+use crate::Comparator;
+
 /// Sorts the list using insertion sort.
 // This version was almost completely copied from libcollections/slice.rs
-pub fn sort<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
-    list: &mut [T],
-    is_greater: C,
-) -> Result<(), E> {
+pub(crate) fn sort<T, C: Comparator<T>>(list: &mut [T], cmp: &C) -> Result<(), C::Error> {
     if list.len() < 2 {
         return Ok(());
     }
@@ -18,7 +17,7 @@ pub fn sort<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
         // find the index just above the element that is in order wrt list[i]
         let mut j = 0;
         for (jj, j_el) in list[..i].iter().enumerate().rev() {
-            if !is_greater(j_el, i_el)? {
+            if !cmp.is_gt(j_el, i_el)? {
                 j = jj + 1;
                 break;
             }

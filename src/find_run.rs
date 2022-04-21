@@ -4,12 +4,11 @@
 #[cfg(test)]
 mod tests;
 
+use crate::Comparator;
+
 /// Find a run, reversing if necessary.
-pub fn get_run<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
-    list: &mut [T],
-    is_greater: C,
-) -> Result<usize, E> {
-    let (ord, len) = find_run(list, is_greater)?;
+pub(crate) fn get_run<T, C: Comparator<T>>(list: &mut [T], cmp: &C) -> Result<usize, C::Error> {
+    let (ord, len) = find_run(list, cmp)?;
     if ord {
         list[..len].reverse();
     }
@@ -17,18 +16,18 @@ pub fn get_run<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
 }
 
 /// Find a run. Returns true if it needs reversed, and false otherwise.
-pub fn find_run<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
+pub(crate) fn find_run<T, C: Comparator<T>>(
     list: &[T],
-    is_greater: C,
-) -> Result<(bool, usize), E> {
+    cmp: &C,
+) -> Result<(bool, usize), C::Error> {
     let (first, second) = match list {
         [a, b, ..] => (a, b),
         _ => return Ok((false, list.len())),
     };
     let mut pos = 1;
-    let gt = if is_greater(first, second)? {
+    let gt = if cmp.is_gt(first, second)? {
         for pair in list[1..].windows(2) {
-            if !is_greater(&pair[0], &pair[1])? {
+            if !cmp.is_gt(&pair[0], &pair[1])? {
                 break;
             }
             pos += 1;
@@ -36,7 +35,7 @@ pub fn find_run<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
         true
     } else {
         for pair in list[1..].windows(2) {
-            if is_greater(&pair[0], &pair[1])? {
+            if cmp.is_gt(&pair[0], &pair[1])? {
                 break;
             }
             pos += 1;

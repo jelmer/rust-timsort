@@ -14,31 +14,56 @@ use std::cmp::Ordering;
 use std::convert::Infallible;
 
 type NeverResult<T> = Result<T, Infallible>;
+#[inline(always)]
 fn never<T>(x: Infallible) -> T {
     match x {}
 }
 
+#[inline]
 pub fn try_sort_by<T, E, C: Fn(&T, &T) -> Result<Ordering, E>>(
     list: &mut [T],
-    c: C,
+    cmp: C,
 ) -> Result<(), E> {
     try_sort_by_gt(list, move |a, b| {
-        c(a, b).map(|ord| ord == Ordering::Greater)
+        cmp(a, b).map(|ord| ord == Ordering::Greater)
     })
 }
 
+#[inline]
 pub fn sort_by_gt<T, C: Fn(&T, &T) -> bool>(list: &mut [T], is_greater: C) {
     try_sort_by_gt(list, move |a, b| -> NeverResult<_> { Ok(is_greater(a, b)) })
         .unwrap_or_else(never)
 }
 
-pub fn sort_by<T, C: Fn(&T, &T) -> Ordering>(list: &mut [T], c: C) {
-    try_sort_by_gt(list, move |a, b| -> NeverResult<_> {
-        Ok(c(a, b) == Ordering::Greater)
-    })
-    .unwrap_or_else(never)
+#[inline]
+pub fn sort_by<T, C: Fn(&T, &T) -> Ordering>(list: &mut [T], cmp: C) {
+    try_sort_by(list, move |a, b| -> NeverResult<_> { Ok(cmp(a, b)) }).unwrap_or_else(never)
 }
 
+#[inline]
 pub fn sort<T: PartialOrd>(list: &mut [T]) {
     sort_by_gt(list, |a, b| a > b)
+}
+
+trait Comparator<T> {
+    type Error;
+    fn is_gt(&self, lhs: &T, rhs: &T) -> Result<bool, Self::Error>;
+}
+
+impl<F, T, E> Comparator<T> for F
+where
+    F: Fn(&T, &T) -> Result<bool, E>,
+{
+    type Error = E;
+    fn is_gt(&self, lhs: &T, rhs: &T) -> Result<bool, E> {
+        self(lhs, rhs)
+    }
+}
+
+// really weird, idk why this is necessary...
+#[cfg(test)]
+pub(crate) fn comparator<T>(
+    f: impl Fn(&T, &T) -> NeverResult<bool>,
+) -> impl Comparator<T, Error = Infallible> {
+    f
 }

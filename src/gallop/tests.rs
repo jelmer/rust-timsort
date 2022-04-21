@@ -1,5 +1,5 @@
 use super::Mode;
-use crate::{never, NeverResult};
+use crate::{comparator, never};
 
 macro_rules! test_both {
     ($v:ident, $($x:expr);*) => {{
@@ -181,12 +181,10 @@ fn gallop_large_end_greater() {
     }
 }
 
-pub fn gallop_left<T: Ord>(key: &T, list: &[T], mode: Mode) -> usize {
-    super::gallop_left(key, list, mode, |a, b| -> NeverResult<_> { Ok(a > b) })
-        .unwrap_or_else(never)
+fn gallop_left<T: Ord>(key: &T, list: &[T], mode: Mode) -> usize {
+    super::gallop_left(key, list, mode, &comparator(|a, b| Ok(a > b))).unwrap_or_else(never)
 }
 
-pub fn gallop_right<T: Ord>(key: &T, list: &[T], mode: Mode) -> usize {
-    super::gallop_right(key, list, mode, |a, b| -> NeverResult<_> { Ok(a > b) })
-        .unwrap_or_else(never)
+fn gallop_right<T: Ord>(key: &T, list: &[T], mode: Mode) -> usize {
+    super::gallop_right(key, list, mode, &comparator(|a, b| Ok(a > b))).unwrap_or_else(never)
 }

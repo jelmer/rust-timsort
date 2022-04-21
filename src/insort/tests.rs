@@ -1,4 +1,4 @@
-use crate::{never, NeverResult};
+use crate::{comparator, never};
 
 /// Test the insertion sort implementation with an empty list
 #[test]
@@ -59,7 +59,7 @@ fn stable() {
     struct Item {
         key1: usize,
         key2: usize,
-    };
+    }
     let mut list: Vec<Item> = (0..len)
         .map(|_| {
             key1 += 1;
@@ -68,7 +68,7 @@ fn stable() {
             Item { key1, key2 }
         })
         .collect();
-    super::sort(&mut list, |a, b| -> NeverResult<_> { Ok(a.key1 > b.key1) }).unwrap_or_else(never);
+    super::sort(&mut list, &comparator(|a: &Item, b| Ok(a.key1 > b.key1))).unwrap_or_else(never);
     for pair in list.windows(2) {
         let (a, b) = (&pair[0], &pair[1]);
         assert!(a.key1 <= b.key1);
@@ -79,6 +79,6 @@ fn stable() {
 }
 
 /// Insertion sort implementation convenience used for tests.
-pub fn sort<T: Ord>(list: &mut [T]) {
-    super::sort(list, |a, b| -> NeverResult<_> { Ok(a > b) }).unwrap_or_else(never);
+fn sort<T: Ord>(list: &mut [T]) {
+    super::sort(list, &comparator(|a, b| Ok(a > b))).unwrap_or_else(never);
 }

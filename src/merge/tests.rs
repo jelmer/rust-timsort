@@ -2,7 +2,7 @@
 //! sized temporary slice of the same type. Naturally, it can only merge slices
 //! that are themselves already sorted.
 
-use crate::{never, NeverResult};
+use crate::{comparator, never};
 
 /// Test mergeing two empty slices.
 #[test]
@@ -86,9 +86,11 @@ fn lo_panic() {
     let mut list = vec![1usize, 2, 3, 4, 5];
 
     catch_unwind(AssertUnwindSafe(|| {
-        super::merge(&mut list, 3, |_, _| -> NeverResult<_> {
-            panic!("Expected panic: this is normal")
-        })
+        super::merge(
+            &mut list,
+            3,
+            &comparator(|_, _| panic!("Expected panic: this is normal")),
+        )
         .unwrap_or_else(never)
     }))
     .err()
@@ -109,9 +111,11 @@ fn hi_panic() {
     let mut list = vec![1usize, 2, 3, 4, 5];
 
     catch_unwind(AssertUnwindSafe(|| {
-        super::merge(&mut list, 2, |_, _| -> NeverResult<_> {
-            panic!("Expected panic: this is normal")
-        })
+        super::merge(
+            &mut list,
+            2,
+            &comparator(|_, _| panic!("Expected panic: this is normal")),
+        )
         .unwrap_or_else(never)
     }))
     .err()
@@ -126,17 +130,18 @@ fn hi_panic() {
 
 /// Test that the drop() is never run while sorting.
 
+#[derive(Debug, PartialOrd, Ord, PartialEq, Eq)]
+struct ExplodeOnDrop(usize);
+impl Drop for ExplodeOnDrop {
+    fn drop(&mut self) {
+        panic!("We're not supposed to panic.");
+    }
+}
+
 #[test]
 fn lo_nodrop() {
-    #[derive(Debug)]
-    struct ExplodeOnDrop(usize);
-    impl Drop for ExplodeOnDrop {
-        fn drop(&mut self) {
-            panic!("We're not supposed to panic.");
-        }
-    }
     let mut list = vec![ExplodeOnDrop(3), ExplodeOnDrop(7), ExplodeOnDrop(2)];
-    super::merge(&mut list, 2, |a, b| -> NeverResult<_> { Ok(a.0 > b.0) }).unwrap_or_else(never);
+    merge(&mut list, 2);
     assert!(list[0].0 == 2);
     assert!(list[1].0 == 3);
     assert!(list[2].0 == 7);
@@ -145,15 +150,8 @@ fn lo_nodrop() {
 
 #[test]
 fn hi_nodrop() {
-    #[derive(Debug)]
-    struct ExplodeOnDrop(usize);
-    impl Drop for ExplodeOnDrop {
-        fn drop(&mut self) {
-            panic!("We're not supposed to panic.");
-        }
-    }
     let mut list = vec![ExplodeOnDrop(3), ExplodeOnDrop(2), ExplodeOnDrop(7)];
-    super::merge(&mut list, 1, |a, b| -> NeverResult<_> { Ok(a.0 > b.0) }).unwrap_or_else(never);
+    merge(&mut list, 1);
     assert!(list[0].0 == 2);
     assert!(list[1].0 == 3);
     assert!(list[2].0 == 7);
@@ -245,6 +243,6 @@ fn hi_gallop_stress() {
 }
 
 /// Merge convenience used for tests.
-pub fn merge<T: Ord>(list: &mut [T], first_len: usize) {
-    super::merge(list, first_len, |a, b| -> NeverResult<_> { Ok(a > b) }).unwrap_or_else(never);
+fn merge<T: Ord>(list: &mut [T], first_len: usize) {
+    super::merge(list, first_len, &comparator(|a, b| Ok(a > b))).unwrap_or_else(never)
 }

@@ -1,7 +1,7 @@
 //! The top sorting algorithm; that is, the modified merge sort we keep
 //! talking about.
 
-use crate::{never, NeverResult};
+use crate::{comparator, never};
 
 /// Test the sort implementation with an empty list
 #[test]
@@ -62,7 +62,7 @@ fn stable_npow2() {
     struct Item {
         key1: usize,
         key2: usize,
-    };
+    }
     let mut list: Vec<Item> = (0..len)
         .map(|_| {
             key1 += 1;
@@ -89,7 +89,7 @@ fn stable() {
     struct Item {
         key1: usize,
         key2: usize,
-    };
+    }
     let mut list: Vec<Item> = (0..len)
         .map(|_| {
             key1 += 1;
@@ -108,7 +108,8 @@ fn stable() {
 }
 
 /// Sort implementation convenience used for tests.
-pub fn sort<T: Ord>(list: &mut [T]) {
-    let mut sort_state = super::SortState::new(list, |a, b| -> NeverResult<_> { Ok(a > b) });
-    sort_state.sort().unwrap_or_else(never);
+fn sort<T: Ord>(list: &mut [T]) {
+    super::SortState::new(list, &comparator(|a, b| Ok(a > b)))
+        .sort()
+        .unwrap_or_else(never)
 }

@@ -3,33 +3,34 @@
 #[cfg(test)]
 mod tests;
 
+use crate::Comparator;
 use std::cmp::Ordering;
 
 #[derive(Copy, Clone)]
-pub enum Mode {
+pub(crate) enum Mode {
     Forward,
     Reverse,
 }
 
 /// Returns the index where key should be inserted, assuming it shoul be placed
 /// at the beginning of any cluster of equal items.
-pub fn gallop_left<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
+pub(crate) fn gallop_left<T, C: Comparator<T>>(
     key: &T,
     list: &[T],
     mode: Mode,
-    is_greater: C,
-) -> Result<usize, E> {
-    let (mut base, mut lim) = gallop(key, list, mode, &is_greater)?;
+    cmp: &C,
+) -> Result<usize, C::Error> {
+    let (mut base, mut lim) = gallop(key, list, mode, cmp)?;
     while lim != 0 {
         let ix = base + (lim / 2);
-        match ordering(&is_greater, &list[ix], key)? {
+        match ordering(cmp, &list[ix], key)? {
             Ordering::Less => {
                 base = ix + 1;
                 lim -= 1;
             }
             Ordering::Greater => (),
             Ordering::Equal => {
-                if ix == 0 || is_greater(key, &list[ix - 1])? {
+                if ix == 0 || cmp.is_gt(key, &list[ix - 1])? {
                     base = ix;
                     break;
                 }
@@ -42,17 +43,17 @@ pub fn gallop_left<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
 
 /// Returns the index where key should be inserted, assuming it shoul be placed
 /// at the end of any cluster of equal items.
-pub fn gallop_right<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
+pub(crate) fn gallop_right<T, C: Comparator<T>>(
     key: &T,
     list: &[T],
     mode: Mode,
-    is_greater: C,
-) -> Result<usize, E> {
+    cmp: &C,
+) -> Result<usize, C::Error> {
     let list_len = list.len();
-    let (mut base, mut lim) = gallop(key, list, mode, &is_greater)?;
+    let (mut base, mut lim) = gallop(key, list, mode, cmp)?;
     while lim != 0 {
         let ix = base + (lim / 2);
-        match ordering(&is_greater, &list[ix], key)? {
+        match ordering(cmp, &list[ix], key)? {
             Ordering::Less => {
                 base = ix + 1;
                 lim -= 1;
@@ -60,7 +61,7 @@ pub fn gallop_right<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
             Ordering::Greater => (),
             Ordering::Equal => {
                 base = ix + 1;
-                if ix == list_len - 1 || is_greater(&list[ix + 1], key)? {
+                if ix == list_len - 1 || cmp.is_gt(&list[ix + 1], key)? {
                     break;
                 } else {
                     lim -= 1;
@@ -72,12 +73,12 @@ pub fn gallop_right<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
     Ok(base)
 }
 
-fn gallop<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
+fn gallop<T, C: Comparator<T>>(
     key: &T,
     list: &[T],
     mode: Mode,
-    is_greater: C,
-) -> Result<(usize, usize), E> {
+    cmp: &C,
+) -> Result<(usize, usize), C::Error> {
     let list_len = list.len();
     if list_len == 0 {
         return Ok((0, 0));
@@ -87,7 +88,7 @@ fn gallop<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
             let mut prev_val = 0;
             let mut next_val = 1;
             while next_val < list_len {
-                match ordering(&is_greater, &list[next_val], key)? {
+                match ordering(cmp, &list[next_val], key)? {
                     Ordering::Less => {
                         prev_val = next_val;
                         next_val = ((next_val + 1) * 2) - 1;
@@ -109,7 +110,7 @@ fn gallop<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
         Mode::Reverse => {
             let mut prev_val = list_len;
             let mut next_val = ((prev_val + 1) / 2) - 1;
-            while is_greater(&list[next_val], key)? {
+            while cmp.is_gt(&list[next_val], key)? {
                 prev_val = next_val + 1;
                 next_val = (next_val + 1) / 2;
                 if next_val != 0 {
@@ -124,14 +125,10 @@ fn gallop<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
     Ok(ret)
 }
 
-fn ordering<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
-    is_greater: &C,
-    a: &T,
-    b: &T,
-) -> Result<Ordering, E> {
-    let ord = if is_greater(a, b)? {
+fn ordering<T, C: Comparator<T>>(cmp: &C, a: &T, b: &T) -> Result<Ordering, C::Error> {
+    let ord = if cmp.is_gt(a, b)? {
         Ordering::Greater
-    } else if is_greater(b, a)? {
+    } else if cmp.is_gt(b, a)? {
         Ordering::Less
     } else {
         Ordering::Equal

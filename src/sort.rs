@@ -7,6 +7,7 @@ mod tests;
 use crate::find_run::get_run;
 use crate::insort;
 use crate::merge::merge;
+use crate::Comparator;
 use std::cmp::min;
 
 /// Minimum run length to merge; anything shorter will be lengthend and
@@ -35,12 +36,12 @@ struct Run {
 }
 
 /// All the ongoing state of the sort.
-struct SortState<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> {
+struct SortState<'a, T, C: Comparator<T>> {
     /// The list that is being sorted.
     list: &'a mut [T],
     /// The comparator function. Should return true if the first argument is
     /// greater than the second.
-    is_greater: C,
+    cmp: &'a C,
     /// The list of known-sorted sections of the list that can be merged.
     /// To keep the size of this list down, this invariant is preserved:
     ///  - `runs.len < 3 || runs[i-2].len > runs[i-1].len + runs[i].len`
@@ -51,30 +52,31 @@ struct SortState<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> {
     pos: usize,
 }
 
-impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
-    fn new(list: &'a mut [T], is_greater: C) -> SortState<'a, T, E, C> {
+impl<'a, T, C: Comparator<T>> SortState<'a, T, C> {
+    #[inline]
+    fn new(list: &'a mut [T], cmp: &'a C) -> SortState<'a, T, C> {
         SortState {
             list,
-            is_greater,
+            cmp,
             runs: Vec::new(),
             pos: 0,
         }
     }
 
     /// The outer loop. Find runs, and move forward.
-    fn sort(&mut self) -> Result<(), E> {
+    fn sort(&mut self) -> Result<(), C::Error> {
         let list_len = self.list.len();
         // Minimum run size to use merge sort on. Any sorted sections of the
         // list that are shorter than this are lengthened using `insort::sort`.
         let min_run = calc_min_merge(list_len);
         while self.pos < list_len {
             let pos = self.pos;
-            let mut run_len = get_run(&mut self.list[pos..], &self.is_greater)?;
+            let mut run_len = get_run(&mut self.list[pos..], self.cmp)?;
             let run_min_len = min(min_run, list_len - pos);
             if run_len < run_min_len {
                 run_len = run_min_len;
                 let l = &mut self.list[pos..][..run_len];
-                insort::sort(l, &self.is_greater)?;
+                insort::sort(l, self.cmp)?;
             }
             self.runs.push(Run { pos, len: run_len });
             self.pos += run_len;
@@ -87,7 +89,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
     /// Merge the runs if they're too big.
     /// Copied almost verbatim from
     /// http://envisage-project.eu/proving-android-java-and-python-sorting-algorithm-is-broken-and-how-to-fix-it/#sec3.2
-    fn merge_collapse(&mut self) -> Result<(), E> {
+    fn merge_collapse(&mut self) -> Result<(), C::Error> {
         let runs = &mut self.runs;
         while runs.len() > 1 {
             let l = runs.len();
@@ -107,7 +109,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
                     len: run1.len + run2.len,
                 };
                 let l = &mut self.list[run1.pos..][..run1.len + run2.len];
-                merge(l, run1.len, &self.is_greater)?;
+                merge(l, run1.len, self.cmp)?;
             } else {
                 break; // Invariant established.
             }
@@ -116,7 +118,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
     }
 
     /// Merge any outstanding runs, at the end.
-    fn merge_force_collapse(&mut self) -> Result<(), E> {
+    fn merge_force_collapse(&mut self) -> Result<(), C::Error> {
         let runs = &mut self.runs;
         while runs.len() > 1 {
             let (mut pos1, mut pos2) = (runs.len() - 2, runs.len() - 1);
@@ -132,7 +134,7 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
                 len: run1.len + run2.len,
             };
             let l = &mut self.list[run1.pos..][..run1.len + run2.len];
-            merge(l, run1.len, &self.is_greater)?;
+            merge(l, run1.len, self.cmp)?;
         }
         Ok(())
     }
@@ -141,12 +143,11 @@ impl<'a, T: 'a, E, C: Fn(&T, &T) -> Result<bool, E>> SortState<'a, T, E, C> {
 /// Sorts the list using merge sort.
 pub fn try_sort_by<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
     list: &mut [T],
-    is_greater: C,
+    cmp: C,
 ) -> Result<(), E> {
     if list.len() < MIN_MERGE {
-        insort::sort(list, is_greater)
+        insort::sort(list, &cmp)
     } else {
-        let mut sort_state = SortState::new(list, is_greater);
-        sort_state.sort()
+        SortState::new(list, &cmp).sort()
     }
 }
