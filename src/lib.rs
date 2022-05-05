@@ -9,7 +9,7 @@ mod insort;
 mod merge;
 mod sort;
 
-pub use sort::try_sort_by as try_sort_by_gt;
+use sort::try_sort_by as try_sort_by_cmp;
 use std::cmp::Ordering;
 use std::convert::Infallible;
 
@@ -19,14 +19,19 @@ fn never<T>(x: Infallible) -> T {
     match x {}
 }
 
+pub fn try_sort_by_gt<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
+    list: &mut [T],
+    cmp: C,
+) -> Result<(), E> {
+    try_sort_by_cmp(list, cmp)
+}
+
 #[inline]
 pub fn try_sort_by<T, E, C: Fn(&T, &T) -> Result<Ordering, E>>(
     list: &mut [T],
     cmp: C,
 ) -> Result<(), E> {
-    try_sort_by_gt(list, move |a, b| {
-        cmp(a, b).map(|ord| ord == Ordering::Greater)
-    })
+    try_sort_by_cmp(list, ord_comparator(cmp))
 }
 
 #[inline]
@@ -41,13 +46,23 @@ pub fn sort_by<T, C: Fn(&T, &T) -> Ordering>(list: &mut [T], cmp: C) {
 }
 
 #[inline]
-pub fn sort<T: PartialOrd>(list: &mut [T]) {
-    sort_by_gt(list, |a, b| a > b)
+pub fn sort<T: Ord>(list: &mut [T]) {
+    sort_by(list, Ord::cmp)
 }
 
 trait Comparator<T> {
     type Error;
     fn is_gt(&self, lhs: &T, rhs: &T) -> Result<bool, Self::Error>;
+    fn ordering(&self, lhs: &T, rhs: &T) -> Result<Ordering, Self::Error> {
+        let ord = if self.is_gt(lhs, rhs)? {
+            Ordering::Greater
+        } else if self.is_gt(rhs, lhs)? {
+            Ordering::Less
+        } else {
+            Ordering::Equal
+        };
+        Ok(ord)
+    }
 }
 
 impl<F, T, E> Comparator<T> for F
@@ -66,4 +81,24 @@ pub(crate) fn comparator<T>(
     f: impl Fn(&T, &T) -> NeverResult<bool>,
 ) -> impl Comparator<T, Error = Infallible> {
     f
+}
+#[cfg(test)]
+pub(crate) fn ord_t_comparator<T: Ord>() -> impl Comparator<T, Error = Infallible> {
+    ord_comparator(|a: &T, b| Ok(a.cmp(b)))
+}
+
+pub(crate) fn ord_comparator<T, E, F: Fn(&T, &T) -> Result<Ordering, E>>(
+    f: F,
+) -> impl Comparator<T, Error = E> {
+    struct OrdComparator<F>(F);
+    impl<T, E, F: Fn(&T, &T) -> Result<Ordering, E>> Comparator<T> for OrdComparator<F> {
+        type Error = E;
+        fn is_gt(&self, lhs: &T, rhs: &T) -> Result<bool, E> {
+            (self.0)(lhs, rhs).map(|ord| ord == Ordering::Greater)
+        }
+        fn ordering(&self, lhs: &T, rhs: &T) -> Result<Ordering, Self::Error> {
+            (self.0)(lhs, rhs)
+        }
+    }
+    OrdComparator(f)
 }

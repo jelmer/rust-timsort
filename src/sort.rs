@@ -141,10 +141,7 @@ impl<'a, T, C: Comparator<T>> SortState<'a, T, C> {
 }
 
 /// Sorts the list using merge sort.
-pub fn try_sort_by<T, E, C: Fn(&T, &T) -> Result<bool, E>>(
-    list: &mut [T],
-    cmp: C,
-) -> Result<(), E> {
+pub(crate) fn try_sort_by<T, C: Comparator<T>>(list: &mut [T], cmp: C) -> Result<(), C::Error> {
     if list.len() < MIN_MERGE {
         insort::sort(list, &cmp)
     } else {

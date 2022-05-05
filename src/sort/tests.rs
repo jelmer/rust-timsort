@@ -1,7 +1,7 @@
 //! The top sorting algorithm; that is, the modified merge sort we keep
 //! talking about.
 
-use crate::{comparator, never};
+use crate::{never, ord_t_comparator};
 
 /// Test the sort implementation with an empty list
 #[test]
@@ -109,7 +109,7 @@ fn stable() {
 
 /// Sort implementation convenience used for tests.
 fn sort<T: Ord>(list: &mut [T]) {
-    super::SortState::new(list, &comparator(|a, b| Ok(a > b)))
+    super::SortState::new(list, &ord_t_comparator())
         .sort()
         .unwrap_or_else(never)
 }

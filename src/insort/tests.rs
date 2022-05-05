@@ -1,4 +1,4 @@
-use crate::{comparator, never};
+use crate::{comparator, never, ord_t_comparator};
 
 /// Test the insertion sort implementation with an empty list
 #[test]
@@ -80,5 +80,5 @@ fn stable() {
 
 /// Insertion sort implementation convenience used for tests.
 fn sort<T: Ord>(list: &mut [T]) {
-    super::sort(list, &comparator(|a, b| Ok(a > b))).unwrap_or_else(never);
+    super::sort(list, &ord_t_comparator()).unwrap_or_else(never);
 }

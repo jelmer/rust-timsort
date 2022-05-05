@@ -1,4 +1,4 @@
-use crate::{comparator, never};
+use crate::{comparator, never, ord_t_comparator};
 
 #[test]
 fn empty() {
@@ -76,5 +76,5 @@ fn find_run<T: Ord>(list: &[T]) -> (bool, usize) {
 
 /// With comparator.
 fn get_run<T: Ord>(list: &mut [T]) -> usize {
-    super::get_run(list, &comparator(|a, b| Ok(a > b))).unwrap_or_else(never)
+    super::get_run(list, &ord_t_comparator()).unwrap_or_else(never)
 }

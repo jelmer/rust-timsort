@@ -23,7 +23,7 @@ pub(crate) fn gallop_left<T, C: Comparator<T>>(
     let (mut base, mut lim) = gallop(key, list, mode, cmp)?;
     while lim != 0 {
         let ix = base + (lim / 2);
-        match ordering(cmp, &list[ix], key)? {
+        match cmp.ordering(&list[ix], key)? {
             Ordering::Less => {
                 base = ix + 1;
                 lim -= 1;
@@ -53,7 +53,7 @@ pub(crate) fn gallop_right<T, C: Comparator<T>>(
     let (mut base, mut lim) = gallop(key, list, mode, cmp)?;
     while lim != 0 {
         let ix = base + (lim / 2);
-        match ordering(cmp, &list[ix], key)? {
+        match cmp.ordering(&list[ix], key)? {
             Ordering::Less => {
                 base = ix + 1;
                 lim -= 1;
@@ -88,7 +88,7 @@ fn gallop<T, C: Comparator<T>>(
             let mut prev_val = 0;
             let mut next_val = 1;
             while next_val < list_len {
-                match ordering(cmp, &list[next_val], key)? {
+                match cmp.ordering(&list[next_val], key)? {
                     Ordering::Less => {
                         prev_val = next_val;
                         next_val = ((next_val + 1) * 2) - 1;
@@ -123,15 +123,4 @@ fn gallop<T, C: Comparator<T>>(
         }
     };
     Ok(ret)
-}
-
-fn ordering<T, C: Comparator<T>>(cmp: &C, a: &T, b: &T) -> Result<Ordering, C::Error> {
-    let ord = if cmp.is_gt(a, b)? {
-        Ordering::Greater
-    } else if cmp.is_gt(b, a)? {
-        Ordering::Less
-    } else {
-        Ordering::Equal
-    };
-    Ok(ord)
 }

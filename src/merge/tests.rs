@@ -2,7 +2,7 @@
 //! sized temporary slice of the same type. Naturally, it can only merge slices
 //! that are themselves already sorted.
 
-use crate::{comparator, never};
+use crate::{comparator, never, ord_t_comparator};
 
 /// Test mergeing two empty slices.
 #[test]
@@ -244,5 +244,5 @@ fn hi_gallop_stress() {
 
 /// Merge convenience used for tests.
 fn merge<T: Ord>(list: &mut [T], first_len: usize) {
-    super::merge(list, first_len, &comparator(|a, b| Ok(a > b))).unwrap_or_else(never)
+    super::merge(list, first_len, &ord_t_comparator()).unwrap_or_else(never)
 }
